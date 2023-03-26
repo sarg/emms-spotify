@@ -67,7 +67,7 @@
 
 (define-minor-mode emms-player-spotify-adblock
   "Mutes spotify ads."
-  :global nil
+  :global t
 
   (require 'pulseaudio-control)
 
