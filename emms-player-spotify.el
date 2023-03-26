@@ -108,12 +108,20 @@ Extracts playback status and track metadata from PROPERTIES."
 
          (emms-player-spotify-adblock-maybe is-ad)
 
-         (unless is-ad
-           (with-current-emms-playlist
-             (when emms-player-spotify-following
-               (emms-player-spotify-following--on-new-track new-track)))
+         (if (emms-player-get emms-player-spotify 'playpause-requested)
+             (emms-player-set emms-player-spotify 'playpause-requested nil)
 
-           (emms-player-spotify--update-metadata metadata))))
+           (unless is-ad
+             (with-current-emms-playlist
+               (when emms-player-spotify-following
+                 (emms-player-spotify-following--on-new-track new-track)))
+
+             (emms-player-spotify--update-metadata metadata)))))
+
+      ((and "Paused" (guard (emms-player-get emms-player-spotify 'playpause-requested)))
+       (emms-player-set emms-player-spotify 'playpause-requested nil)
+       (ignore))
+
 
       ((and "Paused" (guard (emms-player-get emms-player-spotify 'stop-requested)))
        ;; special case, when user changes track in emms
@@ -237,11 +245,13 @@ Extracts playback status and track metadata from PROPERTIES."
 (defun emms-player-spotify-play ()
   "Start playing current track in spotify."
   (interactive)
+  (emms-player-set emms-player-spotify 'playpause-requested t)
   (emms-player-spotify--dbus-call "Play"))
 
 (defun emms-player-spotify-pause ()
   "Pause current track in spotify."
   (interactive)
+  (emms-player-set emms-player-spotify 'playpause-requested t)
   (emms-player-spotify--dbus-call "Pause"))
 
 (defun emms-player-spotify-enable-dbus-handler ()
