@@ -202,12 +202,27 @@ Extracts playback status and track metadata from PROPERTIES."
          (forward-line -1)
          (set-marker emms-playlist-selected-marker (point))))))
 
-  (if emms-player-spotify-following
-      (when-let* ((current-track (emms-playlist-current-selected-track))
-                  ((not (emms-track-get current-track 'info-title))))
-        ;; (emms-track-set current-track 'info-title "Some radio")
-        ;; (emms-track-updated current-track)
-        )))
+  (defun emms-player-spotify-following-next ()
+    (interactive)
+    (emms-player-spotify--dbus-call "Next"))
+
+  (defun emms-player-spotify-following-previous ()
+    (interactive)
+    (emms-player-spotify--dbus-call "Previous"))
+
+  (cond
+   (emms-player-spotify-following
+    (advice-add 'emms-next :override #'emms-player-spotify-following-next)
+    (advice-add 'emms-previous :override #'emms-player-spotify-following-previous)
+    (when-let* ((current-track (emms-playlist-current-selected-track))
+                ((not (emms-track-get current-track 'info-title))))
+      ;; load playlist name and set it
+      ;; (emms-track-set current-track 'info-title "Some radio")
+      ;; (emms-track-updated current-track)
+      ))
+   (t
+    (advice-remove 'emms-next #'emms-player-spotify-following-next)
+    (advice-remove 'emms-previous #'emms-player-spotify-following-previous))))
 
 (defun emms-player-spotify-stop ()
   (emms-player-spotify-following -1)
