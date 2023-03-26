@@ -1,0 +1,19 @@
+* What is it.
+This is an implementation of ~emms-player-spotify~ which works as a companion for the desktop app.
+It supports =spotify:<type>:<id>= links, e.g. =spotify:track:2BzJno6LURg7HgfokcN9nc= or =spotify:artist:3SYkxKBdwKFCTxWDh9l5f9=.
+
+Features:
+- synchronised player state between emms and spotify
+  - manual seeking in spotify is recognized by emms
+  - play/pause in the app toggles ~emms-player-spotify~ state
+- muting ads
+- ~emms-player-spotify-following~ minor mode to keep history of played tracks in a dynamic playlist
+- integrated with emms modeline module
+
+* TODOs [0/6]
+- [ ] expand =spotify:album:= to a playlist
+- [ ] expand =spotify:playlist:=
+- [ ] better support for playlists
+- [ ] implement emms-info-function to retrieve dynamic playlist names
+- [ ] try "seeded" playlists  [[https://developer.spotify.com/documentation/web-api/reference/#/operations/get-recommendations][Recommendations API]]
+- [ ] implement seek
