@@ -213,7 +213,8 @@ Extracts playback status and track metadata from PROPERTIES."
 
        (emms-insert-url new-track)
        (forward-line -1)
-       (set-marker emms-playlist-selected-marker (point)))))
+       (set-marker emms-playlist-selected-marker (point))
+       (emms-player-started emms-player-spotify))))
 
   (defun emms-player-spotify-following-next ()
     (interactive)
