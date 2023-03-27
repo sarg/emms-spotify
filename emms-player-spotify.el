@@ -28,11 +28,6 @@
   :type '(cons symbol alist)
   :group 'emms-player-spotify)
 
-(defun emms-player-spotify--mpris-to-spotify (metadata)
-  (string-replace "/" ":"
-    (s-chop-prefix "/com/"
-      (caadr (assoc "mpris:trackid" metadata)))))
-
 (defun millis-to-seconds (ms)
   (round (* ms (expt 10 -6))))
 
@@ -42,7 +37,8 @@
          (length  (caadr  (assoc "mpris:length" metadata)))
          (artist  (caaadr (assoc "xesam:artist" metadata)))
          (title   (caadr  (assoc "xesam:title"  metadata)))
-         (trackid (emms-player-spotify--mpris-to-spotify metadata)))
+         (url     (caadr  (assoc "xesam:url"    metadata)))
+         (trackid (emms-player-spotify--transform-url url)))
 
     (when-let ((current-track (emms-playlist-current-selected-track))
                ((eq emms-player-playing-p emms-player-spotify))
@@ -71,6 +67,12 @@
 
   (require 'pulseaudio-control)
 
+  ;; todo remove pulseaudio-control dependency
+  ;; pactl list sink-inputs \
+  ;; | grep -P '^Sink|application.name' \
+  ;; | grep -B1 'spotify' \
+  ;; | grep -Po '(?<=Input #)\d+' \
+  ;; | xargs -p -i -n1 pactl set-sink-input-mute {} toggle
   (defun emms-player-spotify-mute (val)
     (when-let ((sink-input (seq-find (lambda (el)
                                        (string= "spotify" (alist-get "application.process.binary" (cdr el) nil nil #'string=)))
@@ -84,7 +86,9 @@
                   (emms-player-spotify-mute t)
                 (run-with-timer 2 nil #'emms-player-spotify-mute nil))))
 
-    (fset 'emms-player-spotify-adblock-maybe #'ignore)))
+    (fset 'emms-player-spotify-adblock-maybe #'ignore))
+
+  nil)
 
 (defun emms-player-spotify--event-handler (_ properties &rest _)
   "Handles mpris dbus event.
@@ -103,7 +107,8 @@ Extracts playback status and track metadata from PROPERTIES."
       ;; new track reported via mpris
       ("Playing"
        (let* ((metadata (or metadata (emms-player-spotify--get-mpris-metadata)))
-              (new-track (emms-player-spotify--mpris-to-spotify metadata))
+              (url (caadr (assoc "xesam:url" metadata)))
+              (new-track (emms-player-spotify--transform-url url))
               (is-ad (s-prefix-p "spotify:ad" new-track)))
 
          (emms-player-spotify-adblock-maybe is-ad)
@@ -111,17 +116,18 @@ Extracts playback status and track metadata from PROPERTIES."
          (if (emms-player-get emms-player-spotify 'playpause-requested)
              (emms-player-set emms-player-spotify 'playpause-requested nil)
 
-           (unless is-ad
-             (with-current-emms-playlist
-               (when emms-player-spotify-following
-                 (emms-player-spotify-following--on-new-track new-track)))
+           (with-current-emms-playlist
+             (if is-ad
+                 (unless emms-player-spotify-following (emms-player-stopped))
 
-             (emms-player-spotify--update-metadata metadata)))))
+               (when emms-player-spotify-following
+                 (emms-player-spotify-following--on-new-track new-track))
+
+               (emms-player-spotify--update-metadata metadata))))))
 
       ((and "Paused" (guard (emms-player-get emms-player-spotify 'playpause-requested)))
        (emms-player-set emms-player-spotify 'playpause-requested nil)
        (ignore))
-
 
       ((and "Paused" (guard (emms-player-get emms-player-spotify 'stop-requested)))
        ;; special case, when user changes track in emms
@@ -198,17 +204,16 @@ Extracts playback status and track metadata from PROPERTIES."
   :global nil
 
   (defun emms-player-spotify-following--on-new-track (new-track)
-    (with-current-emms-playlist
-      (save-excursion
-        ;; create new entry with current track from the radio
-        (goto-char emms-playlist-selected-marker)
-        (emms-with-inhibit-read-only-t
-         (if (s-prefix-p "spotify:track" (emms-track-name (emms-playlist-track-at)))
-             (forward-line))
+    (save-excursion
+      ;; create new entry with current track from the radio
+      (goto-char emms-playlist-selected-marker)
+      (emms-with-inhibit-read-only-t
+       (if (s-prefix-p "spotify:track" (emms-track-name (emms-playlist-track-at)))
+           (forward-line))
 
-         (emms-insert-url new-track)
-         (forward-line -1)
-         (set-marker emms-playlist-selected-marker (point))))))
+       (emms-insert-url new-track)
+       (forward-line -1)
+       (set-marker emms-playlist-selected-marker (point)))))
 
   (defun emms-player-spotify-following-next ()
     (interactive)
