@@ -53,43 +53,65 @@
   "Set current playing time to POS when Seeked event occurs."
   (emms-playing-time-set (millis-to-seconds pos)))
 
-(defun emms-player-spotify-adblock-maybe (is-ad)
-  "Process track changed event. Mute when IS-AD, unmute otherwise."
-  (ignore))
+(defun emms-player-spotify--set-volume (val)
+    (dbus-set-property
+     :session
+     "org.mpris.MediaPlayer2.spotify"
+     "/org/mpris/MediaPlayer2"
+     "org.mpris.MediaPlayer2.Player"
+     "Volume"
+     (float val)))
 
-(defun emms-player-spotify-mute (val)
-  "Mute spotify sink in pulseaudio."
-  (ignore))
+(defun emms-player-spotify--adblock-do (is-ad)
+  (if is-ad (emms-player-spotify--set-volume 0)
+    (run-with-timer 2 nil #'emms-player-spotify--set-volume 1)))
 
 (define-minor-mode emms-player-spotify-adblock
   "Mutes spotify ads."
-  :global t
+  :require 'emms-player-spotify
+  :global t)
 
-  (require 'pulseaudio-control)
+;;; Following mode
+(defun emms-player-spotify-following-next ()
+  (interactive)
+  (emms-player-spotify--dbus-call "Next"))
 
-  ;; todo remove pulseaudio-control dependency
-  ;; pactl list sink-inputs \
-  ;; | grep -P '^Sink|application.name' \
-  ;; | grep -B1 'spotify' \
-  ;; | grep -Po '(?<=Input #)\d+' \
-  ;; | xargs -p -i -n1 pactl set-sink-input-mute {} toggle
-  (defun emms-player-spotify-mute (val)
-    (when-let ((sink-input (seq-find (lambda (el)
-                                       (string= "spotify" (alist-get "application.process.binary" (cdr el) nil nil #'string=)))
-                                     (pulseaudio-control--get-sink-inputs))))
-      (pulseaudio-control--set-sink-input-mute (car sink-input) val)))
+(defun emms-player-spotify-following-previous ()
+  (interactive)
+  (emms-player-spotify--dbus-call "Previous"))
 
-  (if emms-player-spotify-adblock
-      (fset 'emms-player-spotify-adblock-maybe
-            (lambda (is-ad)
-              (if is-ad
-                  (emms-player-spotify-mute t)
-                (run-with-timer 2 nil #'emms-player-spotify-mute nil))))
+(define-minor-mode emms-player-spotify-following
+  "When playing radios keep history in the same playlist."
+  :global nil
 
-    (fset 'emms-player-spotify-adblock-maybe #'ignore))
+  (defun emms-player-spotify-following--on-new-track (new-track)
+    (save-excursion
+      ;; create new entry with current track from the radio
+      (goto-char emms-playlist-selected-marker)
+      (emms-with-inhibit-read-only-t
+       (if (s-prefix-p "spotify:track" (emms-track-name (emms-playlist-track-at)))
+           (forward-line))
 
-  nil)
+       (emms-insert-url new-track)
+       (forward-line -1)
+       (set-marker emms-playlist-selected-marker (point))
+       (emms-player-started emms-player-spotify))))
 
+  (cond
+   (emms-player-spotify-following
+    (advice-add 'emms-next :override #'emms-player-spotify-following-next)
+    (advice-add 'emms-previous :override #'emms-player-spotify-following-previous)
+    (when-let* ((current-track (emms-playlist-current-selected-track))
+                ((not (emms-track-get current-track 'info-title))))
+      ;; load playlist name and set it
+      ;; (emms-track-set current-track 'info-title "Some radio")
+      ;; (emms-track-updated current-track)
+      ))
+   (t
+    (advice-remove 'emms-next #'emms-player-spotify-following-next)
+    (advice-remove 'emms-previous #'emms-player-spotify-following-previous))))
+
+;;; DBUS events handler
 (defun emms-player-spotify--event-handler (_ properties &rest _)
   "Handles mpris dbus event.
 Extracts playback status and track metadata from PROPERTIES."
@@ -111,7 +133,8 @@ Extracts playback status and track metadata from PROPERTIES."
               (new-track (emms-player-spotify--transform-url url))
               (is-ad (s-prefix-p "spotify:ad" new-track)))
 
-         (emms-player-spotify-adblock-maybe is-ad)
+         (when emms-player-spotify-adblock
+           (emms-player-spotify--adblock-do is-ad))
 
          (if (emms-player-get emms-player-spotify 'playpause-requested)
              (emms-player-set emms-player-spotify 'playpause-requested nil)
@@ -199,45 +222,6 @@ Extracts playback status and track metadata from PROPERTIES."
     (emms-player-spotify--dbus-call "OpenUri" url))
   (emms-player-started emms-player-spotify))
 
-(define-minor-mode emms-player-spotify-following
-  "When playing radios keep history in the same playlist."
-  :global nil
-
-  (defun emms-player-spotify-following--on-new-track (new-track)
-    (save-excursion
-      ;; create new entry with current track from the radio
-      (goto-char emms-playlist-selected-marker)
-      (emms-with-inhibit-read-only-t
-       (if (s-prefix-p "spotify:track" (emms-track-name (emms-playlist-track-at)))
-           (forward-line))
-
-       (emms-insert-url new-track)
-       (forward-line -1)
-       (set-marker emms-playlist-selected-marker (point))
-       (emms-player-started emms-player-spotify))))
-
-  (defun emms-player-spotify-following-next ()
-    (interactive)
-    (emms-player-spotify--dbus-call "Next"))
-
-  (defun emms-player-spotify-following-previous ()
-    (interactive)
-    (emms-player-spotify--dbus-call "Previous"))
-
-  (cond
-   (emms-player-spotify-following
-    (advice-add 'emms-next :override #'emms-player-spotify-following-next)
-    (advice-add 'emms-previous :override #'emms-player-spotify-following-previous)
-    (when-let* ((current-track (emms-playlist-current-selected-track))
-                ((not (emms-track-get current-track 'info-title))))
-      ;; load playlist name and set it
-      ;; (emms-track-set current-track 'info-title "Some radio")
-      ;; (emms-track-updated current-track)
-      ))
-   (t
-    (advice-remove 'emms-next #'emms-player-spotify-following-next)
-    (advice-remove 'emms-previous #'emms-player-spotify-following-previous))))
-
 (defun emms-player-spotify-stop ()
   (emms-player-spotify-following -1)
   (emms-player-stopped)
@@ -283,13 +267,6 @@ Extracts playback status and track metadata from PROPERTIES."
       (lambda (&rest args)
         (when (eq emms-player-playing-p emms-player-spotify)
           (apply #'emms-player-spotify--event-handler args))))))
-
-;; public radio
-;(emms-add-url "spotify:user:spotify:playlist:37i9dQZEVXbk5YUFhWd7TC")
-;; artist radio
-;(emms-add-url "spotify:artist:3SYkxKBdwKFCTxWDh9l5f9")
-
-
 
 (emms-player-set emms-player-spotify 'regex
                  (rx string-start (or "https://open.spotify.com" "spotify:")))
