@@ -1,4 +1,4 @@
-;;; emms-player-spotify.el --- Spotify player for EMMS
+;;; emms-player-spotify.el --- Spotify player for EMMS  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2023 by Sergey Trofimov
 
@@ -80,33 +80,27 @@
   (interactive)
   (emms-player-spotify--dbus-call "Previous"))
 
+(defun emms-player-spotify-following--on-new-track (new-track)
+  (save-excursion
+    ;; create new entry with current track from the radio
+    (goto-char emms-playlist-selected-marker)
+    (emms-with-inhibit-read-only-t
+     (if (s-prefix-p "spotify:track" (emms-track-name (emms-playlist-track-at)))
+         (forward-line))
+
+     (emms-insert-url new-track)
+     (forward-line -1)
+     (set-marker emms-playlist-selected-marker (point))
+     (emms-player-started emms-player-spotify))))
+
 (define-minor-mode emms-player-spotify-following
   "When playing radios keep history in the same playlist."
   :global nil
 
-  (defun emms-player-spotify-following--on-new-track (new-track)
-    (save-excursion
-      ;; create new entry with current track from the radio
-      (goto-char emms-playlist-selected-marker)
-      (emms-with-inhibit-read-only-t
-       (if (s-prefix-p "spotify:track" (emms-track-name (emms-playlist-track-at)))
-           (forward-line))
-
-       (emms-insert-url new-track)
-       (forward-line -1)
-       (set-marker emms-playlist-selected-marker (point))
-       (emms-player-started emms-player-spotify))))
-
   (cond
    (emms-player-spotify-following
     (advice-add 'emms-next :override #'emms-player-spotify-following-next)
-    (advice-add 'emms-previous :override #'emms-player-spotify-following-previous)
-    (when-let* ((current-track (emms-playlist-current-selected-track))
-                ((not (emms-track-get current-track 'info-title))))
-      ;; load playlist name and set it
-      ;; (emms-track-set current-track 'info-title "Some radio")
-      ;; (emms-track-updated current-track)
-      ))
+    (advice-add 'emms-previous :override #'emms-player-spotify-following-previous))
    (t
     (advice-remove 'emms-next #'emms-player-spotify-following-next)
     (advice-remove 'emms-previous #'emms-player-spotify-following-previous))))
@@ -203,14 +197,6 @@ Extracts playback status and track metadata from PROPERTIES."
      nil
      ,@(if args args '())))
 
-(defun emms-player--fetch-metadata (url)
-  ;; (let* ((track-id (nth 2 (string-split url ":")))
-  ;;         (query-url (concat counsel-spotify-spotify-api-url "/tracks/" track-id)))
-
-  ;;   (counsel-spotify-with-auth-token (auth-token)
-  ;;     (counsel-spotify-with-query-results (auth-token query-url results)
-  ;;       (funcall cb (counsel-spotify-parse-spotify-object results 'tracks)))))
-  )
 
 (defun emms-player-spotify-start (track)
   (emms-player-spotify-enable-dbus-handler)
