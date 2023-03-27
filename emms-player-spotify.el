@@ -260,6 +260,9 @@ Extracts playback status and track metadata from PROPERTIES."
   (emms-player-spotify--dbus-call "Pause"))
 
 (defun emms-player-spotify-enable-dbus-handler ()
+  (unless (member "org.mpris.MediaPlayer2.spotify" (dbus-list-known-names :session))
+   (error "Spotify App is not running"))
+
   (emms-player-set emms-player-spotify
     'dbus-seek-handler
     (dbus-register-signal :session
