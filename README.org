@@ -10,8 +10,90 @@ Features:
 - ~emms-player-spotify-following~ minor mode to keep history of played tracks in a dynamic playlist
 - integrated with emms modeline module
 
-* TODOs [0/6]
-- [ ] expand =spotify:album:= to a playlist
+* Installation
+#+begin_src emacs-lisp
+(use-package emms-player-spotify
+  :straight (emms-player-spotify :type git :host github :repo "sarg/emms-spotify")
+  :config
+  (emms-player-spotify-adblock t)
+  (add-to-list 'emms-player-list emms-player-spotify))
+#+end_src
+
+Install [[https://flathub.org/apps/details/com.spotify.Client][Spotify]] from FlatHub. In the app settings disable Autoplay.
+
+* Usage
+** Local playlist mode
+This is the default EMMS way of listening music. Create a playlist from e.g. m3u file and add it with =emms-add-playlist-file=.
+#+caption: TOOL-Lateralus.m3u
+#+begin_example
+spotify:track:6ZsZxNP4Iwdyp3kd5oFFQN
+spotify:track:5aVJ5rv7ghWSkQaqP726tE
+spotify:track:0Klbxk3g96Qae4DbCnUNcT
+spotify:track:4KVTRIZIj1WWIxitbREDnK
+spotify:track:55mJleti2WfWEFNFcBduhc
+spotify:track:3EeoMkZF8NhX9FdCSxG8MB
+spotify:track:1vxu8vMNshg5J8z3oA7QJZ
+spotify:track:0Cnx6PGogxIE2RnDcnoeK8
+spotify:track:7tvuLLroI0n6uYBWuFig5d
+spotify:track:1FRlNrHd4OGNIEVgFuX9Fu
+spotify:track:0R7HFX1LW3E0ZR5BnAJLHz
+spotify:track:2D9rd6TIpqmDkog5Mx8kxl
+spotify:track:3oEgMtjTzGgXTFdO0IW2M7
+#+end_example
+
+** Following mode
+This mode enables automatically when a non-track link is encountered by the player. It could be an =album=, an =artist= or =playlist= links. =spotify= will then control the queue and the player will follow, adding new tracks to the playlist as you listen to them.
+
+Start =spotify= and then =M-x emms-add-url RET <link>=. E.g. [[https://open.spotify.com/album/5l5m1hnH4punS1GQXgEi3T][TOOL - Lateralus]].
+
+Once the queue ends, the resulting playlist could be saved locally with ~C-x C-s~
+* counsel-spotify integration
+
+[[https://melpa.org/#/counsel-spotify][counsel-spotify]] provides dynamic search functions for spotify content. Here is an example setup that will expand albums into individual tracks and for other types of playable links (playlist or artist) it will set up titles.
+
+#+begin_src emacs-lisp
+(use-package counsel-spotify
+  :defer t
+  :config
+  (if (string-empty-p counsel-spotify-client-secret)
+      (setq counsel-spotify-client-id (+pass-get-field "Sites/spotify.com" "client-id")
+            counsel-spotify-client-secret (+pass-get-field "Sites/spotify.com" "client-secret")))
+
+  (defun emms-player-spotify-expand-album (id)
+    (counsel-spotify-with-auth-token (auth-token)
+     (counsel-spotify-with-query-results
+      (auth-token (concat counsel-spotify-spotify-api-url "/albums/" id "/tracks") results)
+
+      (with-current-emms-playlist
+        (goto-char (point-max))
+        (ignore (mapc (lambda (el)
+            (let ((track (emms-track 'url (uri el))))
+              (emms-track-set track 'info-title (name el))
+              (emms-track-set track 'info-artist (name (artist el)))
+              (emms-track-set track 'info-album (name (album el)))
+              (emms-track-set track 'info-playing-time (millis-to-seconds (duration-in-ms el)))
+              (emms-playlist-insert-track track)))
+          (counsel-spotify-parse-items (list (cons 'tracks results)) 'tracks)))))))
+
+  (cl-defmethod counsel-spotify-do-play ((backend counsel-spotify-linux-backend) (playable counsel-spotify-playable))
+    (with-current-emms-playlist
+      (goto-char (point-max))
+      (cond
+       ((counsel-spotify-album-p playable)
+        (emms-player-spotify-expand-album
+         (nth 2 (string-split (uri playable) ":"))))
+
+       (t
+        (let ((track (emms-track 'url (uri playable))))
+          (emms-track-set track 'info-artist "Spotify Playlist")
+          (emms-track-set track 'info-title
+                          (decode-coding-string (string-make-unibyte (name playable)) 'utf-8))
+          (emms-playlist-insert-track track)
+          (emms-playlist-mode-play-current-track)))))))
+#+end_src
+
+* TODOs [1/6]
+- [X] expand =spotify:album:= to a playlist
 - [ ] expand =spotify:playlist:=
 - [ ] better support for playlists
 - [ ] implement emms-info-function to retrieve dynamic playlist names
