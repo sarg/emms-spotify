@@ -92,10 +92,10 @@ Once the queue ends, the resulting playlist could be saved locally with ~C-x C-s
           (emms-playlist-mode-play-current-track)))))))
 #+end_src
 
-* TODOs [1/6]
+* TODOs [2/6]
 - [X] expand =spotify:album:= to a playlist
 - [ ] expand =spotify:playlist:=
 - [ ] better support for playlists
 - [ ] implement emms-info-function to retrieve dynamic playlist names
 - [ ] try "seeded" playlists  [[https://developer.spotify.com/documentation/web-api/reference/#/operations/get-recommendations][Recommendations API]]
-- [ ] implement seek
+- [X] implement seek
