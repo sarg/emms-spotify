@@ -265,6 +265,7 @@ Extracts playback status and track metadata from PROPERTIES."
 
   (cond
    (emms-player-spotify-following
+    (when emms-random-playlist (emms-toggle-random-playlist))
     (advice-add 'emms-next :override #'emms-player-spotify-following-next)
     (advice-add 'emms-previous :override #'emms-player-spotify-following-previous))
    (t
