@@ -4,11 +4,18 @@
 
 ;; Author: Sergey Trofimov <sarg@sarg.org.ru>
 ;; Version: 0.1
-;; URL: https://github.com/sarg/emms-spotify.el
+;; URL: https://github.com/sarg/emms-spotify
 ;; Package-Requires: ((emacs "28.1"))
 
 ;;; Commentary:
-;; This package displays torrent files using tablist-mode.
+;; This package provides an EMMS player wrapper for Spotify. It supports two
+;; types of links: internal spotify ids in form of "spotify:<type>:<id>" and in
+;; form of a "https://open.spotify.com/<type>/<id>" URLs. The package delegates
+;; actual playback to the desktop app, which must be already running. For proper
+;; work, please disable Autoplay feature in the desktop app, so that EMMS would
+;; have full control over the playback queue. As the package uses DBUS MPRIS
+;; interface to control the player, it will work only on platforms where dbus is
+;; available.
 
 ;;; Code:
 (require 's)
@@ -161,7 +168,7 @@ Extracts playback status and track metadata from PROPERTIES."
        ;; emms-player-spotify-start called
        ;; Paused mpris event comes
        (emms-player-set emms-player-spotify 'stop-requested nil)
-       (ignore))
+       (emms-player-stopped))
 
       ("Paused"
        ;; pause pressed in spotify or the song ended
@@ -286,7 +293,6 @@ Extracts playback status and track metadata from PROPERTIES."
 
 (defun emms-player-spotify-stop ()
   (emms-player-spotify-following -1)
-  (emms-player-stopped)
   (emms-player-set emms-player-spotify 'stop-requested t)
   (emms-player-spotify--dbus-call "Stop"))
 
