@@ -36,6 +36,11 @@
   :type '(cons symbol alist)
   :group 'emms-player-spotify)
 
+(defcustom emms-player-spotify-adblock nil
+  "Mute ads automatically."
+  :type '(boolean)
+  :group 'emms-player-spotify)
+
 ;;; Utils
 
 (defun seconds-to-millis (sec)
@@ -63,16 +68,6 @@
    "org.mpris.MediaPlayer2.Player"
    "Volume"
    (float val)))
-
-(defun emms-player-spotify--adblock-do (is-ad)
-  "Mute spotify depending on IS-AD."
-  (if is-ad (emms-player-spotify--set-volume 0)
-    (run-with-timer 2 nil #'emms-player-spotify--set-volume 1)))
-
-(define-minor-mode emms-player-spotify-adblock
-  "Mutes spotify ads."
-  :require 'emms-player-spotify
-  :global t)
 
 ;;; DBUS events handler
 
@@ -123,9 +118,8 @@ Extracts playback status and track metadata from PROPERTIES."
                 (cur-track (emms-playlist-selected-track))
                 (cur-is-ad (s-prefix-p "spotify:ad" (emms-track-name cur-track))))
 
-           ;; adblock maybe
            (when emms-player-spotify-adblock
-             (emms-player-spotify--adblock-do new-is-ad))
+             (emms-player-spotify--set-volume (if new-is-ad 0 1)))
 
            ;; override artist and title for ads
            (when new-is-ad
