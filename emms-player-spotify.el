@@ -41,6 +41,11 @@
   :type '(boolean)
   :group 'emms-player-spotify)
 
+(defcustom emms-player-spotify-launch-cmd nil
+  "Command to start spotify desktop app."
+  :type '(string)
+  :group 'emms-player-spotify)
+
 (defcustom emms-player-spotify-adblock-delay 1
   "Extend ad mute for this long."
   :type '(number)
@@ -172,7 +177,6 @@ Extracts playback status and track metadata from PROPERTIES."
        ;; mpris Stop called
        ;; emms-player-spotify-start called
        ;; Paused mpris event comes
-       (emms-player-set emms-player-spotify 'stop-requested nil)
        (emms-player-set emms-player-spotify 'stop-requested nil))
 
       ("Paused"
@@ -225,7 +229,9 @@ Extracts playback status and track metadata from PROPERTIES."
 
 (defun emms-player-spotify-enable-dbus-handler ()
   (unless (member "org.mpris.MediaPlayer2.spotify" (dbus-list-known-names :session))
-   (error "Spotify App is not running"))
+    (when emms-player-spotify-launch-cmd
+      (call-process-shell-command emms-player-spotify-launch-cmd nil 0 nil))
+    (error "Spotify App is not running. Starting."))
 
   (emms-player-set emms-player-spotify
     'dbus-seek-handler
