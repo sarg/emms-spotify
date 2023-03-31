@@ -208,7 +208,11 @@ Extracts playback status and track metadata from PROPERTIES."
              (save-excursion
                (goto-char emms-playlist-selected-marker)
                (emms-player-stopped)
-               (emms-playlist-mode-kill-entire-track))))
+               (emms-playlist-mode-kill-entire-track)))
+
+           (when emms-player-spotify-adblock
+             (run-with-timer emms-player-spotify-adblock-delay nil
+                             #'emms-player-spotify--set-volume 1)))
 
           (song-ended
            (emms-player-stopped))
@@ -325,9 +329,8 @@ Extracts playback status and track metadata from PROPERTIES."
   (emms-player-spotify-debug-msg "Stop requested")
   (emms-player-spotify-following -1)
   (emms-player-set emms-player-spotify 'stop-requested t)
-  (emms-player-spotify-disable-dbus-handler)
-  (emms-player-stopped)
-  (emms-player-spotify--dbus-call "Stop"))
+  (emms-player-spotify--dbus-call "Stop")
+  (emms-player-stopped))
 
 (defun emms-player-spotify-play ()
   "Start playing current track in spotify."
