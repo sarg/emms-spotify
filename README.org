@@ -54,10 +54,16 @@ Once the queue ends, the resulting playlist could be saved locally with ~C-x C-s
 #+begin_src emacs-lisp
 (use-package counsel-spotify
   :defer t
+  :custom
+  (counsel-spotify-use-notifications nil) ; conflicts with handlers of emms-player-spotify
+  ; (counsel-spotify-client-id "my-client-id")
+  ; (counsel-spotify-client-id "my-client-secret") ; in case your config is strictly private
+
   :config
+  ; load secrets from auth-source-pass on first call
   (if (string-empty-p counsel-spotify-client-secret)
-      (setq counsel-spotify-client-id (+pass-get-field "Sites/spotify.com" "client-id")
-            counsel-spotify-client-secret (+pass-get-field "Sites/spotify.com" "client-secret")))
+      (setq counsel-spotify-client-id (auth-source-pass-get "client-id" "Sites/spotify.com")
+            counsel-spotify-client-secret (auth-source-pass-get "client-secret" "Sites/spotify.com")))
 
   (defun emms-player-spotify-expand-album (id)
     (counsel-spotify-with-auth-token (auth-token)

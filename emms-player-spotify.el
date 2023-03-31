@@ -41,6 +41,11 @@
   :type '(boolean)
   :group 'emms-player-spotify)
 
+(defcustom emms-player-spotify-adblock-delay 1
+  "Extend ad mute for this long."
+  :type '(number)
+  :group 'emms-player-spotify)
+
 ;;; Utils
 
 (defun seconds-to-millis (sec)
@@ -119,7 +124,13 @@ Extracts playback status and track metadata from PROPERTIES."
                 (cur-is-ad (s-prefix-p "spotify:ad" (emms-track-name cur-track))))
 
            (when emms-player-spotify-adblock
-             (emms-player-spotify--set-volume (if new-is-ad 0 1)))
+             (cond
+              (new-is-ad
+               (emms-player-spotify--set-volume 0))
+
+              (cur-is-ad
+               (run-with-timer emms-player-spotify-adblock-delay nil
+                               #'emms-player-spotify--set-volume 1))))
 
            ;; override artist and title for ads
            (when new-is-ad
@@ -162,7 +173,7 @@ Extracts playback status and track metadata from PROPERTIES."
        ;; emms-player-spotify-start called
        ;; Paused mpris event comes
        (emms-player-set emms-player-spotify 'stop-requested nil)
-       (emms-player-stopped))
+       (emms-player-set emms-player-spotify 'stop-requested nil))
 
       ("Paused"
        ;; pause pressed in spotify or the song ended
@@ -203,6 +214,8 @@ Extracts playback status and track metadata from PROPERTIES."
      ,@(if args args '())))
 
 (defun emms-player-spotify-disable-dbus-handler ()
+  "Unregister dbus handlers."
+  (interactive)
   (dbus-unregister-object (emms-player-get emms-player-spotify 'dbus-handler))
   (dbus-unregister-object (emms-player-get emms-player-spotify 'dbus-seek-handler)))
 
@@ -288,6 +301,8 @@ Extracts playback status and track metadata from PROPERTIES."
 (defun emms-player-spotify-stop ()
   (emms-player-spotify-following -1)
   (emms-player-set emms-player-spotify 'stop-requested t)
+  (emms-player-spotify-disable-dbus-handler)
+  (emms-player-stopped)
   (emms-player-spotify--dbus-call "Stop"))
 
 (defun emms-player-spotify-play ()
