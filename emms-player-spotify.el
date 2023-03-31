@@ -117,20 +117,33 @@ Extracts playback status and track metadata from PROPERTIES."
               (and metadata "Playing"))))
 
     (pcase playback-status
-      ;; play pressed outside of emms
       ((and "Playing" (guard emms-player-paused-p))
-       (emms-player-spotify-debug-msg "Spotify play pressed while EMMS paused")
+       (emms-player-spotify-debug-msg "Play pressed in spotify directly")
        (setq emms-player-paused-p nil)
        (run-hooks 'emms-player-paused-hook))
 
       ;; resumed after emms-playpause request
+      ;; ignore to avoid creating new tracks in following mode
       ((and "Playing" (guard (emms-player-get emms-player-spotify 'playpause-requested)))
-       (emms-player-spotify-debug-msg "User requested play resume")
+       (emms-player-spotify-debug-msg "Resuming play after emms-pause")
        (emms-player-set emms-player-spotify 'playpause-requested nil)
        (ignore))
 
-      ;; new track reported via mpris
-      ("Playing"
+      ((and "Paused" (guard (emms-player-get emms-player-spotify 'playpause-requested)))
+       (emms-player-spotify-debug-msg "Paused after emms-pause request")
+       (emms-player-set emms-player-spotify 'playpause-requested nil)
+       (ignore))
+
+      ((and "Paused" (guard (emms-player-get emms-player-spotify 'stop-requested)))
+       ;; special case, when user changes track in emms
+       ;; emms-player-spotify-stop called
+       ;; mpris Stop called
+       ;; emms-player-spotify-start called
+       ;; Paused mpris event comes
+       (emms-player-spotify-debug-msg "Paused after emms-stop")
+       (emms-player-set emms-player-spotify 'stop-requested nil))
+
+      ("Playing" ;; new track reported via mpris
        (with-current-emms-playlist
          (let* ((metadata (or metadata (emms-player-spotify--get-mpris-metadata)))
                 (url (caadr (assoc "xesam:url" metadata)))
@@ -169,37 +182,22 @@ Extracts playback status and track metadata from PROPERTIES."
 
             ;; following mode, add the track
             (emms-player-spotify-following
-             (emms-player-spotify-following--on-new-track new-track)
-
              (when cur-is-ad
                ;; last ad track, remove placeholder
                (save-excursion
                  (goto-char emms-playlist-selected-marker)
-                 (forward-line -1)
-                 (emms-playlist-mode-kill-entire-track)))))
+                 (emms-playlist-mode-kill-entire-track)))
+
+             (emms-player-spotify-following--on-new-track new-track)))
 
            (emms-player-spotify--update-metadata metadata))))
-
-      ((and "Paused" (guard (emms-player-get emms-player-spotify 'playpause-requested)))
-       (emms-player-spotify-debug-msg "Paused after emms-playpause request")
-       (emms-player-set emms-player-spotify 'playpause-requested nil)
-       (ignore))
-
-      ((and "Paused" (guard (emms-player-get emms-player-spotify 'stop-requested)))
-       ;; special case, when user changes track in emms
-       ;; emms-player-spotify-stop called
-       ;; mpris Stop called
-       ;; emms-player-spotify-start called
-       ;; Paused mpris event comes
-       (emms-player-spotify-debug-msg "Paused after emms-stop")
-       (emms-player-set emms-player-spotify 'stop-requested nil))
 
       ("Paused"
        ;; pause pressed in spotify or the song ended
        (let* ((current-track (emms-playlist-current-selected-track))
               (track-len (emms-track-get current-track 'info-playing-time))
-              (song-ended (< (- track-len emms-playing-time) 2))
-              (is-ad (s-prefix-p "spotify:ad" (emms-track-name current-track))))
+              (song-ended (< (- track-len emms-playing-time) 1))
+              (is-ad (s-prefix-p "spotify:ad:" (emms-track-name current-track))))
 
          (emms-player-spotify-debug-msg "Paused without user request: %s ended: %s" (emms-track-name current-track) song-ended)
          (cond
@@ -233,9 +231,7 @@ Extracts playback status and track metadata from PROPERTIES."
      "org.mpris.MediaPlayer2.spotify"
      "/org/mpris/MediaPlayer2"
      "org.mpris.MediaPlayer2.Player"
-     ,method
-     nil
-     ,@(if args args '())))
+     ,method nil ,@(if args args '())))
 
 (defun emms-player-spotify-disable-dbus-handler ()
   "Unregister dbus handlers."

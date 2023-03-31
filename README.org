@@ -98,6 +98,53 @@ Once the queue ends, the resulting playlist could be saved locally with ~C-x C-s
           (emms-playlist-mode-play-current-track)))))))
 #+end_src
 
+* Timelines
+#+begin_example
+p - paused
+> - playing
+□ - stopped
+m - mute
+u - unmute
+a - ad
+[ - add temporary ad track
+] - remove temporary track
++ - add track in following mode
+#+end_example
+
+** EMMS controls
+#+begin_example
+EMMS  >     p     >    □
+------+-+---+-+---+-+--+-+--->
+SPOT    >     p     >    p
+#+end_example
+
+** Spotify controls
+#+begin_example
+EMMS  >      p    >
+------+-+--+-+--+-+--->
+SPOT    >  p    >
+#+end_example
+
+** Ads in track-by-track mode
+#+begin_example
+EMMS  >     [m   m   up] >
+------+-+-+-+--+-+-+-+---+-+->
+SPOT    > a    a   p       >
+#+end_example
+
+** Following mode
+#+begin_example
+EMMS  >   +>   +>
+------+-+-+--+-+--->
+SPOT    >    >
+#+end_example
+
+** Ads while following
+#+begin_example
+EMMS  >     [m   m   u]+>
+------+-+-+-+--+-+-+-+------>
+SPOT    > a    a   >
+#+end_example
 * TODOs [2/6]
 - [X] expand =spotify:album:= to a playlist
 - [ ] expand =spotify:playlist:=
