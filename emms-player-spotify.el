@@ -51,7 +51,16 @@
   :type '(number)
   :group 'emms-player-spotify)
 
+(defvar emms-player-spotify-debug nil)
+
 ;;; Utils
+
+(defun emms-player-spotify-debug-msg (msg &rest args)
+  (when emms-player-spotify-debug
+    (with-current-buffer (get-buffer-create "*emms-player-spotify-debug*")
+      (goto-char (point-max))
+      (insert (apply 'format
+                     (append (list (concat "%.1f " msg "\n") (float-time)) args))))))
 
 (defun seconds-to-millis (sec)
   (* sec (expt 10 6)))
@@ -110,11 +119,13 @@ Extracts playback status and track metadata from PROPERTIES."
     (pcase playback-status
       ;; play pressed outside of emms
       ((and "Playing" (guard emms-player-paused-p))
+       (emms-player-spotify-debug-msg "Spotify play pressed while EMMS paused")
        (setq emms-player-paused-p nil)
        (run-hooks 'emms-player-paused-hook))
 
       ;; resumed after emms-playpause request
       ((and "Playing" (guard (emms-player-get emms-player-spotify 'playpause-requested)))
+       (emms-player-spotify-debug-msg "User requested play resume")
        (emms-player-set emms-player-spotify 'playpause-requested nil)
        (ignore))
 
@@ -127,6 +138,8 @@ Extracts playback status and track metadata from PROPERTIES."
                 (new-is-ad (s-prefix-p "spotify:ad" new-track))
                 (cur-track (emms-playlist-selected-track))
                 (cur-is-ad (s-prefix-p "spotify:ad" (emms-track-name cur-track))))
+
+           (emms-player-spotify-debug-msg "New track playing: %s" new-track)
 
            (when emms-player-spotify-adblock
              (cond
@@ -168,6 +181,7 @@ Extracts playback status and track metadata from PROPERTIES."
            (emms-player-spotify--update-metadata metadata))))
 
       ((and "Paused" (guard (emms-player-get emms-player-spotify 'playpause-requested)))
+       (emms-player-spotify-debug-msg "Paused after emms-playpause request")
        (emms-player-set emms-player-spotify 'playpause-requested nil)
        (ignore))
 
@@ -177,6 +191,7 @@ Extracts playback status and track metadata from PROPERTIES."
        ;; mpris Stop called
        ;; emms-player-spotify-start called
        ;; Paused mpris event comes
+       (emms-player-spotify-debug-msg "Paused after emms-stop")
        (emms-player-set emms-player-spotify 'stop-requested nil))
 
       ("Paused"
@@ -186,6 +201,7 @@ Extracts playback status and track metadata from PROPERTIES."
               (song-ended (< (- track-len emms-playing-time) 2))
               (is-ad (s-prefix-p "spotify:ad" (emms-track-name current-track))))
 
+         (emms-player-spotify-debug-msg "Paused without user request: %s ended: %s" (emms-track-name current-track) song-ended)
          (cond
           (is-ad
            (with-current-emms-playlist
@@ -296,6 +312,7 @@ Extracts playback status and track metadata from PROPERTIES."
 
 (defun emms-player-spotify-start (track)
   (emms-player-spotify-enable-dbus-handler)
+  (emms-player-spotify-debug-msg "Start requested")
   (let ((url (emms-player-spotify--transform-url (emms-track-name track))))
 
     (unless (string= "track" (nth 1 (split-string url ":")))
@@ -305,6 +322,7 @@ Extracts playback status and track metadata from PROPERTIES."
   (emms-player-started emms-player-spotify))
 
 (defun emms-player-spotify-stop ()
+  (emms-player-spotify-debug-msg "Stop requested")
   (emms-player-spotify-following -1)
   (emms-player-set emms-player-spotify 'stop-requested t)
   (emms-player-spotify-disable-dbus-handler)
@@ -314,6 +332,7 @@ Extracts playback status and track metadata from PROPERTIES."
 (defun emms-player-spotify-play ()
   "Start playing current track in spotify."
   (interactive)
+  (emms-player-spotify-debug-msg "Play requested")
   (emms-player-set emms-player-spotify 'playpause-requested t)
   (emms-player-spotify--dbus-call "Play"))
 
@@ -338,6 +357,7 @@ Extracts playback status and track metadata from PROPERTIES."
 (defun emms-player-spotify-pause ()
   "Pause current track in spotify."
   (interactive)
+  (emms-player-spotify-debug-msg "Pause requested")
   (emms-player-set emms-player-spotify 'playpause-requested t)
   (emms-player-spotify--dbus-call "Pause"))
 
