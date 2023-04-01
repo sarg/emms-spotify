@@ -14,8 +14,12 @@ Features:
 #+begin_src emacs-lisp
 (use-package emms-player-spotify
   :straight (emms-player-spotify :type git :host github :repo "sarg/emms-spotify")
-  :config
+
+  :custom
+  (emms-player-spotify-launch-cmd "flatpak run com.spotify.Client")
   (emms-player-spotify-adblock t)
+
+  :config
   (add-to-list 'emms-player-list emms-player-spotify))
 #+end_src
 
