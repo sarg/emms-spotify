@@ -162,9 +162,9 @@ Extracts playback status and track metadata from PROPERTIES."
          (let* ((metadata (or metadata (emms-player-spotify--get-mpris-metadata)))
                 (url (caadr (assoc "xesam:url" metadata)))
                 (new-track (emms-player-spotify--transform-url url))
-                (new-is-ad (s-prefix-p "spotify:ad" new-track))
+                (new-is-ad (s-prefix-p "spotify:ad:" new-track))
                 (cur-track (emms-playlist-selected-track))
-                (cur-is-ad (s-prefix-p "spotify:ad" (emms-track-name cur-track))))
+                (cur-is-ad (s-prefix-p "spotify:ad:" (emms-track-name cur-track))))
 
            (emms-player-spotify-debug-msg "New track playing: %s" new-track)
 
@@ -192,7 +192,7 @@ Extracts playback status and track metadata from PROPERTIES."
              ;; last ad track, remove placeholder
              (save-excursion
                (goto-char emms-playlist-selected-marker)
-               (emms-playlist-mode-kill-entire-track))
+               (delete-line))
 
              (when emms-player-spotify-adblock
                (emms-player-spotify--adblock-toggle))
@@ -209,19 +209,20 @@ Extracts playback status and track metadata from PROPERTIES."
               (song-ended (zerop (emms-player-spotify--get-property "Position")))
               (is-ad (s-prefix-p "spotify:ad:" (emms-track-name current-track))))
 
-         (emms-player-spotify-debug-msg "Paused without user request: %s ended: %s" (emms-track-name current-track) song-ended)
+         (emms-player-spotify-debug-msg
+          "Paused without user request: %s ended: %s" (emms-track-name current-track) song-ended)
+
          (cond
-          (is-ad
-           (with-current-emms-playlist
-             (save-excursion
-               (goto-char emms-playlist-selected-marker)
-               (emms-player-stopped)
-               (emms-playlist-mode-kill-entire-track)))
-
-           (when emms-player-spotify-adblock
-             (emms-player-spotify--adblock-toggle)))
-
           (song-ended
+           (when is-ad
+             (with-current-emms-playlist
+               (save-excursion
+                 (goto-char emms-playlist-selected-marker)
+                 (delete-line)))
+
+             (when emms-player-spotify-adblock
+               (emms-player-spotify--adblock-toggle)))
+
            (emms-player-stopped))
 
           ('paused-externally
@@ -330,6 +331,7 @@ Extracts playback status and track metadata from PROPERTIES."
 (defun emms-player-spotify-start (track)
   (emms-player-spotify-enable-dbus-handler)
   (emms-player-spotify-debug-msg "Start requested")
+  (emms-player-set 'emms-player-spotify 'ad-blocked nil)
   (let ((url (emms-player-spotify--transform-url (emms-track-name track))))
 
     (unless (string= "track" (nth 1 (split-string url ":")))
