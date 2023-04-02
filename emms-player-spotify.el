@@ -108,6 +108,20 @@
       (emms-track-set current-track 'info-playing-time (millis-to-seconds length))
       (emms-track-updated current-track))))
 
+(defun emms-player-spotify--adblock-toggle ()
+  "Toggle mute when IS-AD."
+  (pcase (emms-player-get 'emms-player-spotify 'ad-blocked)
+    ('t
+     (emms-player-set 'emms-player-spotify 'ad-blocked nil)
+     (run-with-timer emms-player-spotify-adblock-delay nil
+                     #'emms-player-spotify--set-volume
+                     (emms-player-get emms-player-spotify 'saved-volume)))
+    (_
+     (emms-player-set 'emms-player-spotify 'ad-blocked t)
+     (emms-player-set emms-player-spotify 'saved-volume
+                      (emms-player-spotify--get-volume))
+     (emms-player-spotify--set-volume 0))))
+
 (defun emms-player-spotify--event-handler (_ properties &rest _)
   "Handles mpris dbus event.
 Extracts playback status and track metadata from PROPERTIES."
@@ -169,9 +183,7 @@ Extracts playback status and track metadata from PROPERTIES."
 
             (new-is-ad
              (when emms-player-spotify-adblock
-               (emms-player-set emms-player-spotify 'saved-volume
-                                (emms-player-spotify--get-volume))
-               (emms-player-spotify--set-volume 0))
+               (emms-player-spotify--adblock-toggle))
 
              ;; first ad track, add a placeholder
              (emms-player-spotify-following--on-new-track new-track))
@@ -183,9 +195,7 @@ Extracts playback status and track metadata from PROPERTIES."
                (emms-playlist-mode-kill-entire-track))
 
              (when emms-player-spotify-adblock
-               (run-with-timer emms-player-spotify-adblock-delay nil
-                               #'emms-player-spotify--set-volume
-                               (emms-player-get emms-player-spotify 'saved-volume)))
+               (emms-player-spotify--adblock-toggle))
 
              (when emms-player-spotify-following
                (emms-player-spotify-following--on-new-track new-track))))
@@ -209,9 +219,7 @@ Extracts playback status and track metadata from PROPERTIES."
                (emms-playlist-mode-kill-entire-track)))
 
            (when emms-player-spotify-adblock
-             (run-with-timer emms-player-spotify-adblock-delay nil
-                             #'emms-player-spotify--set-volume
-                             (emms-player-get emms-player-spotify 'saved-volume))))
+             (emms-player-spotify--adblock-toggle)))
 
           (song-ended
            (emms-player-stopped))
