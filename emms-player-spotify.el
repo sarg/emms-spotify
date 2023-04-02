@@ -119,7 +119,7 @@
     (_
      (emms-player-set 'emms-player-spotify 'ad-blocked t)
      (emms-player-set emms-player-spotify 'saved-volume
-                      (emms-player-spotify--get-volume))
+                      (emms-player-spotify--get-property "Volume"))
      (emms-player-spotify--set-volume 0))))
 
 (defun emms-player-spotify--event-handler (_ properties &rest _)
@@ -206,7 +206,7 @@ Extracts playback status and track metadata from PROPERTIES."
        ;; pause pressed in spotify or the song ended
        (let* ((current-track (emms-playlist-current-selected-track))
               (track-len (emms-track-get current-track 'info-playing-time))
-              (song-ended (< (- track-len emms-playing-time) 2))
+              (song-ended (zerop (emms-player-spotify--get-property "Position")))
               (is-ad (s-prefix-p "spotify:ad:" (emms-track-name current-track))))
 
          (emms-player-spotify-debug-msg "Paused without user request: %s ended: %s" (emms-track-name current-track) song-ended)
@@ -228,13 +228,13 @@ Extracts playback status and track metadata from PROPERTIES."
            (setq emms-player-paused-p t)
            (run-hooks 'emms-player-paused-hook))))))))
 
-(defun emms-player-spotify--get-volume ()
+(defun emms-player-spotify--get-property (name)
   (dbus-get-property
    :session
    "org.mpris.MediaPlayer2.spotify"
    "/org/mpris/MediaPlayer2"
    "org.mpris.MediaPlayer2.Player"
-   "Volume"))
+   name))
 
 (defun emms-player-spotify--get-mpris-metadata ()
   (cdr (assoc "Metadata"
