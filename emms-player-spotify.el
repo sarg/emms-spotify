@@ -69,12 +69,14 @@
   (round (* ms (expt 10 -6))))
 
 (defun emms-player-spotify--transform-url (url)
-  (or (and (string-prefix-p "https" url)
+  (or (and (string-prefix-p "http" url)
         (concat "spotify"
-          (replace-regexp-in-string
-            "/" ":"
+          (s-replace "/" ":"
             (car (url-path-and-query (url-generic-parse-url url))))))
     url))
+
+(defun emms-player-spotify--track-name (track)
+  (emms-player-spotify--transform-url (emms-track-name track)))
 
 ;;; adblock
 
@@ -101,7 +103,7 @@
 
     (when-let* (((eq emms-player-playing-p emms-player-spotify))
                 (current-track (emms-playlist-current-selected-track))
-                ((equal (emms-track-name current-track) trackid)))
+                ((equal (emms-player-spotify--track-name current-track) trackid)))
       (emms-track-set current-track 'info-artist artist)
       (emms-track-set current-track 'info-album album)
       (emms-track-set current-track 'info-title title)
@@ -164,7 +166,7 @@ Extracts playback status and track metadata from PROPERTIES."
                 (new-track (emms-player-spotify--transform-url url))
                 (new-is-ad (s-prefix-p "spotify:ad:" new-track))
                 (cur-track (emms-playlist-selected-track))
-                (cur-is-ad (s-prefix-p "spotify:ad:" (emms-track-name cur-track))))
+                (cur-is-ad (s-prefix-p "spotify:ad:" (emms-player-spotify--track-name cur-track))))
 
            (emms-player-spotify-debug-msg "New track playing: %s" new-track)
 
@@ -198,6 +200,10 @@ Extracts playback status and track metadata from PROPERTIES."
                (emms-player-spotify--adblock-toggle))
 
              (when emms-player-spotify-following
+               (emms-player-spotify-following--on-new-track new-track)))
+
+            ('just-a-new-track
+             (when emms-player-spotify-following
                (emms-player-spotify-following--on-new-track new-track))))
 
            (emms-player-spotify--update-metadata metadata))))
@@ -207,10 +213,10 @@ Extracts playback status and track metadata from PROPERTIES."
        (let* ((current-track (emms-playlist-current-selected-track))
               (track-len (emms-track-get current-track 'info-playing-time))
               (song-ended (zerop (emms-player-spotify--get-property "Position")))
-              (is-ad (s-prefix-p "spotify:ad:" (emms-track-name current-track))))
+              (is-ad (s-prefix-p "spotify:ad:" (emms-player-spotify--track-name current-track))))
 
          (emms-player-spotify-debug-msg
-          "Paused without user request: %s ended: %s" (emms-track-name current-track) song-ended)
+          "Paused without user request: %s ended: %s" (emms-player-spotify--track-name current-track) song-ended)
 
          (cond
           (song-ended
@@ -303,9 +309,9 @@ Extracts playback status and track metadata from PROPERTIES."
     ;; create new entry with current track from the radio
     (goto-char emms-playlist-selected-marker)
     (emms-with-inhibit-read-only-t
-     (let ((url (emms-track-name (emms-playlist-track-at))))
-       (when (or (s-prefix-p "spotify:track" url)
-                 (s-prefix-p "spotify:ad" url))
+     (let ((url (emms-player-spotify--track-name (emms-playlist-track-at))))
+       (when (or (s-prefix-p "spotify:track:" url)
+                 (s-prefix-p "spotify:ad:" url))
          (forward-line)))
 
      (emms-insert-url new-track)
@@ -332,11 +338,9 @@ Extracts playback status and track metadata from PROPERTIES."
   (emms-player-spotify-enable-dbus-handler)
   (emms-player-spotify-debug-msg "Start requested")
   (emms-player-set 'emms-player-spotify 'ad-blocked nil)
-  (let ((url (emms-player-spotify--transform-url (emms-track-name track))))
-
-    (unless (string= "track" (nth 1 (split-string url ":")))
+  (let ((url (emms-player-spotify--track-name track)))
+    (unless (s-prefix-p "spotify:track:" url)
       (emms-player-spotify-following t))
-
     (emms-player-spotify--dbus-call "OpenUri" url))
   (emms-player-started emms-player-spotify))
 
@@ -366,7 +370,7 @@ Extracts playback status and track metadata from PROPERTIES."
 
   (with-current-emms-playlist
     (let* ((track (emms-playlist-current-selected-track))
-           (name (emms-track-name track))
+           (name (emms-player-spotify--track-name track))
            (trackid (concat "/com/" (s-replace ":" "/" name))))
 
       (emms-player-spotify--dbus-call
