@@ -1,16 +1,27 @@
 * What is it.
 This is an implementation of ~emms-player-spotify~ which works as a companion for the desktop app.
-It supports =spotify:<type>:<id>= links, e.g. =spotify:track:2BzJno6LURg7HgfokcN9nc= or =spotify:artist:3SYkxKBdwKFCTxWDh9l5f9=.
+It plays links in Spotify's default "share" format, e.g. https://open.spotify.com/album/5l5m1hnH4punS1GQXgEi3T.
+Also it supports =spotify:<type>:<id>= links, e.g. =spotify:track:2BzJno6LURg7HgfokcN9nc= or =spotify:artist:3SYkxKBdwKFCTxWDh9l5f9=, which are returned by Spotify's API.
 
 Features:
 - synchronised player state between emms and spotify
   - manual seeking in spotify is recognized by emms
   - play/pause in the app toggles ~emms-player-spotify~ state
 - muting ads
-- ~emms-player-spotify-following~ minor mode to keep history of played tracks in a dynamic playlist
+- ~emms-player-spotify-following~ minor mode to keep history of played tracks
 - integrated with emms modeline module
 
 * Installation
+** EMMS
+If you haven't used it yet, then here is a minimal config.
+#+begin_src emacs-lisp
+(use-package emms
+  :config
+  (emms-all)
+  (emms-default-players)
+  (emms-history-load))
+#+end_src
+** emms-player-spotify
 #+begin_src emacs-lisp
 (use-package emms-player-spotify
   :straight (emms-player-spotify :type git :host github :repo "sarg/emms-spotify")
@@ -26,8 +37,12 @@ Features:
 Install [[https://flathub.org/apps/details/com.spotify.Client][Spotify]] from FlatHub. In the app settings disable Autoplay.
 
 * Usage
-** Local playlist mode
-This is the default EMMS way of listening music. Create a playlist from e.g. m3u file and add it with =emms-add-playlist-file=.
+** Playlist of individual tracks
+This is the default EMMS way of listening music, though making a playlist isn't
+exactly trivial, as Spotify doesn't provide such. You'll have to source
+individual tracks somewhere, i.e. by parsing Spotify pages or using their API.
+Here is an example playlist you could use.
+
 #+caption: TOOL-Lateralus.m3u
 #+begin_example
 spotify:track:6ZsZxNP4Iwdyp3kd5oFFQN
@@ -46,21 +61,21 @@ spotify:track:3oEgMtjTzGgXTFdO0IW2M7
 #+end_example
 
 ** Following mode
-This mode enables automatically when a non-track link is encountered by the player. It could be an =album=, an =artist= or =playlist= links. =spotify= will then control the queue and the player will follow, adding new tracks to the playlist as you listen to them.
+This mode is much easier to use, just add any Spotify "collection" URL, e.g. an album or a playlist, and this collection will be expanded to individual tracks as you listen to them. You won't be able to see the next tracks though, only the past ones.
 
-Start =spotify= and then =M-x emms-add-url RET <link>=. E.g. [[https://open.spotify.com/album/5l5m1hnH4punS1GQXgEi3T][TOOL - Lateralus]].
+Try it with =M-x emms-add-url RET <link>=. E.g. [[https://open.spotify.com/album/5l5m1hnH4punS1GQXgEi3T][TOOL - Lateralus]].
 
-Once the queue ends, the resulting playlist could be saved locally with ~C-x C-s~
+Once the queue ends, the resulting playlist could be saved locally with ~C-x C-s~.
 * counsel-spotify integration
 
-[[https://melpa.org/#/counsel-spotify][counsel-spotify]] provides dynamic search functions for spotify content. Here is an example setup that will expand albums into individual tracks and for other types of playable links (playlist or artist) it will set up titles.
+[[https://melpa.org/#/counsel-spotify][counsel-spotify]] provides dynamic search functions for spotify content. Here is an example setup that will expand albums into individual tracks. For other non-track playables (playlist or artist) it will popuplate the title.
 
 #+begin_src emacs-lisp
 (use-package counsel-spotify
   :defer t
   :custom
   (counsel-spotify-use-notifications nil) ; conflicts with handlers of emms-player-spotify
-  ; (counsel-spotify-client-id "my-client-id")
+  ; (counsel-spotify-client-id "my-client-id")     ; you can hardcode the credentials
   ; (counsel-spotify-client-id "my-client-secret") ; in case your config is strictly private
 
   :config

@@ -78,6 +78,13 @@
 (defun emms-player-spotify--track-name (track)
   (emms-player-spotify--transform-url (emms-track-name track)))
 
+(defun emms-player-spotify--single-track-p (track)
+  "Return t if TRACK is an individual `playable'."
+  (let ((url (emms-player-spotify--track-name track)))
+    (or (s-prefix-p "spotify:track:" url)
+        (s-prefix-p "spotify:episode:" url)
+        (s-prefix-p "spotify:ad:" url))))
+
 ;;; adblock
 
 (defun emms-player-spotify--set-volume (val)
@@ -304,15 +311,13 @@ Extracts playback status and track metadata from PROPERTIES."
   (emms-player-spotify--dbus-call "Previous"))
 
 (defun emms-player-spotify-following--on-new-track (new-track)
-  "Insert EMMS track with metadata from NEW-TRACK."
+  "Insert NEW-TRACK before the `playlist'-track which is being followed."
   (save-excursion
     ;; create new entry with current track from the radio
     (goto-char emms-playlist-selected-marker)
     (emms-with-inhibit-read-only-t
-     (let ((url (emms-player-spotify--track-name (emms-playlist-track-at))))
-       (when (or (s-prefix-p "spotify:track:" url)
-                 (s-prefix-p "spotify:ad:" url))
-         (forward-line)))
+     (when (emms-player-spotify--single-track-p (emms-playlist-track-at))
+       (forward-line))
 
      (emms-insert-url new-track)
      (forward-line -1)
@@ -338,10 +343,9 @@ Extracts playback status and track metadata from PROPERTIES."
   (emms-player-spotify-enable-dbus-handler)
   (emms-player-spotify-debug-msg "Start requested")
   (emms-player-set 'emms-player-spotify 'ad-blocked nil)
-  (let ((url (emms-player-spotify--track-name track)))
-    (unless (s-prefix-p "spotify:track:" url)
-      (emms-player-spotify-following t))
-    (emms-player-spotify--dbus-call "OpenUri" url))
+  (when (not (emms-player-spotify--single-track-p track))
+    (emms-player-spotify-following t))
+  (emms-player-spotify--dbus-call "OpenUri" (emms-player-spotify--track-name track))
   (emms-player-started emms-player-spotify))
 
 (defun emms-player-spotify-stop ()
