@@ -171,3 +171,5 @@ SPOT    > a    a   >
 - [ ] implement emms-info-function to retrieve dynamic playlist names
 - [ ] try "seeded" playlists  [[https://developer.spotify.com/documentation/web-api/reference/#/operations/get-recommendations][Recommendations API]]
 - [X] implement seek
+- drag-n-drop to emms
+- playback to chromecast

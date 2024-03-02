@@ -5,7 +5,7 @@
 ;; Author: Sergey Trofimov <sarg@sarg.org.ru>
 ;; Version: 0.1
 ;; URL: https://github.com/sarg/emms-spotify
-;; Package-Requires: ((emacs "28.1"))
+;; Package-Requires: ((emacs "26.1") (compat "29.1"))
 
 ;;; Commentary:
 ;; This package provides an EMMS player wrapper for Spotify. It supports two
@@ -18,6 +18,7 @@
 ;; available.
 
 ;;; Code:
+(require 'compat)
 (require 's)
 (require 'dbus)
 (require 'url-parse)
@@ -56,34 +57,35 @@
 ;;; Utils
 
 (defun emms-player-spotify-debug-msg (msg &rest args)
+  "Log MSG formatted with ARGS to the debug buffer."
   (when emms-player-spotify-debug
     (with-current-buffer (get-buffer-create "*emms-player-spotify-debug*")
       (goto-char (point-max))
       (insert (apply 'format
                      (append (list (concat "%.1f " msg "\n") (float-time)) args))))))
 
-(defun seconds-to-millis (sec)
-  (* sec (expt 10 6)))
-
-(defun millis-to-seconds (ms)
-  (round (* ms (expt 10 -6))))
-
 (defun emms-player-spotify--transform-url (url)
-  (or (and (string-prefix-p "http" url)
-        (concat "spotify"
-          (s-replace "/" ":"
-            (car (url-path-and-query (url-generic-parse-url url))))))
+  "Convert URL from http scheme to spotify."
+  (if (string-prefix-p "http" url)
+      (thread-last
+        url
+        (url-generic-parse-url)
+        (url-path-and-query)
+        (car)
+        (s-replace "/" ":")
+        (concat "spotify"))
     url))
 
-(defun emms-player-spotify--track-name (track)
+(defun emms-player-spotify--track-uri (track)
+  "Return spotify uri for TRACK."
   (emms-player-spotify--transform-url (emms-track-name track)))
 
 (defun emms-player-spotify--single-track-p (track)
   "Return t if TRACK is an individual `playable'."
-  (let ((url (emms-player-spotify--track-name track)))
-    (or (s-prefix-p "spotify:track:" url)
-        (s-prefix-p "spotify:episode:" url)
-        (s-prefix-p "spotify:ad:" url))))
+  (let ((uri (emms-player-spotify--track-uri track)))
+    (or (s-prefix-p "spotify:track:" uri)
+        (s-prefix-p "spotify:episode:" uri)
+        (s-prefix-p "spotify:ad:" uri))))
 
 ;;; adblock
 
@@ -110,11 +112,11 @@
 
     (when-let* (((eq emms-player-playing-p emms-player-spotify))
                 (current-track (emms-playlist-current-selected-track))
-                ((equal (emms-player-spotify--track-name current-track) trackid)))
+                ((equal (emms-player-spotify--track-uri current-track) trackid)))
       (emms-track-set current-track 'info-artist artist)
       (emms-track-set current-track 'info-album album)
       (emms-track-set current-track 'info-title title)
-      (emms-track-set current-track 'info-playing-time (millis-to-seconds length))
+      (emms-track-set current-track 'info-playing-time (round (* length 1e-6)))
       (emms-track-updated current-track))))
 
 (defun emms-player-spotify--adblock-toggle ()
@@ -168,12 +170,12 @@ Extracts playback status and track metadata from PROPERTIES."
 
       ("Playing" ;; new track reported via mpris
        (with-current-emms-playlist
-         (let* ((metadata (or metadata (emms-player-spotify--get-mpris-metadata)))
+         (let* ((metadata (or metadata (cdr (emms-player-spotify--get-property "Metadata"))))
                 (url (caadr (assoc "xesam:url" metadata)))
                 (new-track (emms-player-spotify--transform-url url))
                 (new-is-ad (s-prefix-p "spotify:ad:" new-track))
                 (cur-track (emms-playlist-selected-track))
-                (cur-is-ad (s-prefix-p "spotify:ad:" (emms-player-spotify--track-name cur-track))))
+                (cur-is-ad (s-prefix-p "spotify:ad:" (emms-player-spotify--track-uri cur-track))))
 
            (emms-player-spotify-debug-msg "New track playing: %s" new-track)
 
@@ -218,12 +220,11 @@ Extracts playback status and track metadata from PROPERTIES."
       ("Paused"
        ;; pause pressed in spotify or the song ended
        (let* ((current-track (emms-playlist-current-selected-track))
-              (track-len (emms-track-get current-track 'info-playing-time))
               (song-ended (zerop (emms-player-spotify--get-property "Position")))
-              (is-ad (s-prefix-p "spotify:ad:" (emms-player-spotify--track-name current-track))))
+              (is-ad (s-prefix-p "spotify:ad:" (emms-player-spotify--track-uri current-track))))
 
          (emms-player-spotify-debug-msg
-          "Paused without user request: %s ended: %s" (emms-player-spotify--track-name current-track) song-ended)
+          "Paused without user request: %s ended: %s" (emms-player-spotify--track-uri current-track) song-ended)
 
          (cond
           (song-ended
@@ -243,6 +244,7 @@ Extracts playback status and track metadata from PROPERTIES."
            (run-hooks 'emms-player-paused-hook))))))))
 
 (defun emms-player-spotify--get-property (name)
+  "Query dbus property NAME from running spotify process."
   (dbus-get-property
    :session
    "org.mpris.MediaPlayer2.spotify"
@@ -250,19 +252,13 @@ Extracts playback status and track metadata from PROPERTIES."
    "org.mpris.MediaPlayer2.Player"
    name))
 
-(defun emms-player-spotify--get-mpris-metadata ()
-  (cdr (assoc "Metadata"
-         (dbus-get-all-properties :session
-           "org.mpris.MediaPlayer2.spotify"
-           "/org/mpris/MediaPlayer2"
-           "org.mpris.MediaPlayer2.Player"))))
-
 (defmacro emms-player-spotify--dbus-call (method &rest args)
+  "Call dbus METHOD with ARGS on spotify."
   `(dbus-call-method-asynchronously :session
-     "org.mpris.MediaPlayer2.spotify"
-     "/org/mpris/MediaPlayer2"
-     "org.mpris.MediaPlayer2.Player"
-     ,method nil ,@(if args args '())))
+    "org.mpris.MediaPlayer2.spotify"
+    "/org/mpris/MediaPlayer2"
+    "org.mpris.MediaPlayer2.Player"
+    ,method nil ,@(if args args '())))
 
 (defun emms-player-spotify-disable-dbus-handler ()
   "Unregister dbus handlers."
@@ -272,33 +268,34 @@ Extracts playback status and track metadata from PROPERTIES."
 
 (defun emms-player-spotify--seek-handler (pos)
   "Set current playing time to POS when Seeked event occurs."
-  (emms-playing-time-set (millis-to-seconds pos)))
+  (emms-playing-time-set (round (* pos 1e-6))))
 
 (defun emms-player-spotify-enable-dbus-handler ()
+  "Register dbus signal handlers to receive spotify player events."
   (unless (member "org.mpris.MediaPlayer2.spotify" (dbus-list-known-names :session))
     (when emms-player-spotify-launch-cmd
       (call-process-shell-command emms-player-spotify-launch-cmd nil 0 nil))
-    (error "Spotify App is not running. Starting."))
+    (error "Spotify App is not running. Starting"))
 
   (emms-player-set emms-player-spotify
-    'dbus-seek-handler
-    (dbus-register-signal :session
-      "org.mpris.MediaPlayer2.spotify"
-      "/org/mpris/MediaPlayer2"
-      "org.mpris.MediaPlayer2.Player"
-      "Seeked"
-      #'emms-player-spotify--seek-handler))
+                   'dbus-seek-handler
+                   (dbus-register-signal :session
+                                         "org.mpris.MediaPlayer2.spotify"
+                                         "/org/mpris/MediaPlayer2"
+                                         "org.mpris.MediaPlayer2.Player"
+                                         "Seeked"
+                                         #'emms-player-spotify--seek-handler))
 
   (emms-player-set emms-player-spotify
-    'dbus-handler
-    (dbus-register-signal :session
-      "org.mpris.MediaPlayer2.spotify"
-      "/org/mpris/MediaPlayer2"
-      "org.freedesktop.DBus.Properties"
-      "PropertiesChanged"
-      (lambda (&rest args)
-        (when (eq emms-player-playing-p emms-player-spotify)
-          (apply #'emms-player-spotify--event-handler args))))))
+                   'dbus-handler
+                   (dbus-register-signal :session
+                                         "org.mpris.MediaPlayer2.spotify"
+                                         "/org/mpris/MediaPlayer2"
+                                         "org.freedesktop.DBus.Properties"
+                                         "PropertiesChanged"
+                                         (lambda (&rest args)
+                                           (when (eq emms-player-playing-p emms-player-spotify)
+                                             (apply #'emms-player-spotify--event-handler args))))))
 
 ;;; Following mode
 
@@ -340,15 +337,17 @@ Extracts playback status and track metadata from PROPERTIES."
 ;;; emms interface
 
 (defun emms-player-spotify-start (track)
+  "Start playing TRACK."
   (emms-player-spotify-enable-dbus-handler)
   (emms-player-spotify-debug-msg "Start requested")
   (emms-player-set 'emms-player-spotify 'ad-blocked nil)
   (when (not (emms-player-spotify--single-track-p track))
     (emms-player-spotify-following t))
-  (emms-player-spotify--dbus-call "OpenUri" (emms-player-spotify--track-name track))
+  (emms-player-spotify--dbus-call "OpenUri" (emms-player-spotify--track-uri track))
   (emms-player-started emms-player-spotify))
 
 (defun emms-player-spotify-stop ()
+  "Stop playing."
   (emms-player-spotify-debug-msg "Stop requested")
   (emms-player-spotify-following -1)
   (emms-player-set emms-player-spotify 'stop-requested t)
@@ -366,7 +365,7 @@ Extracts playback status and track metadata from PROPERTIES."
   "Seek to SEC relatively."
   (interactive)
 
-  (emms-player-spotify--dbus-call "Seek" :int64 (seconds-to-millis sec)))
+  (emms-player-spotify--dbus-call "Seek" :int64 (* sec 100000)))
 
 (defun emms-player-spotify-seek-to (sec)
   "Seek to absolute position SEC."
@@ -374,11 +373,11 @@ Extracts playback status and track metadata from PROPERTIES."
 
   (with-current-emms-playlist
     (let* ((track (emms-playlist-current-selected-track))
-           (name (emms-player-spotify--track-name track))
-           (trackid (concat "/com/" (s-replace ":" "/" name))))
+           (uri (emms-player-spotify--track-uri track))
+           (trackid (concat "/com/" (s-replace ":" "/" uri))))
 
       (emms-player-spotify--dbus-call
-       "SetPosition" :object-path trackid :int64 (seconds-to-millis sec)))))
+       "SetPosition" :object-path trackid :int64 (* sec 100000)))))
 
 (defun emms-player-spotify-pause ()
   "Pause current track in spotify."
@@ -388,8 +387,9 @@ Extracts playback status and track metadata from PROPERTIES."
   (emms-player-spotify--dbus-call "Pause"))
 
 (defun emms-player-spotify-playable-p (track)
+  "Return t if TRACK is playable with spotify."
   (and (memq (emms-track-type track) '(url))
-    (string-match-p (emms-player-get emms-player-spotify 'regex) (emms-track-name track))))
+       (string-match-p (emms-player-get emms-player-spotify 'regex) (emms-track-name track))))
 
 (emms-player-set emms-player-spotify 'regex
                  (rx string-start (or "https://open.spotify.com" "spotify:")))
