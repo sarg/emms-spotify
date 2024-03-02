@@ -1,11 +1,12 @@
 ;;; emms-player-spotify.el --- Spotify player for EMMS  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2023 by Sergey Trofimov
+;; Copyright (C) 2023-2024 by Sergey Trofimov
+;; SPDX-License-Identifier: Unlicense
 
 ;; Author: Sergey Trofimov <sarg@sarg.org.ru>
 ;; Version: 0.1
 ;; URL: https://github.com/sarg/emms-spotify
-;; Package-Requires: ((emacs "26.1") (compat "29.1"))
+;; Package-Requires: ((emacs "26.1") (compat "29.1") (emms "18") (s "1.13.0"))
 
 ;;; Commentary:
 ;; This package provides an EMMS player wrapper for Spotify. It supports two
@@ -26,7 +27,6 @@
 (require 'emms-playing-time)
 (require 'emms-playlist-mode)
 (require 'emms-source-file)
-(require 'seq)
 
 (defcustom emms-player-spotify
   (emms-player
@@ -52,6 +52,7 @@
   :type '(number)
   :group 'emms-player-spotify)
 
+(defvar emms-player-spotify-following nil)
 (defvar emms-player-spotify-debug nil)
 
 ;;; Utils
@@ -61,7 +62,7 @@
   (when emms-player-spotify-debug
     (with-current-buffer (get-buffer-create "*emms-player-spotify-debug*")
       (goto-char (point-max))
-      (insert (apply 'format
+      (insert (apply #'format
                      (append (list (concat "%.1f " msg "\n") (float-time)) args))))))
 
 (defun emms-player-spotify--transform-url (url)
