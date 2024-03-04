@@ -1,15 +1,14 @@
 * What is it.
-This is an implementation of ~emms-player-spotify~ which works as a companion for the desktop app.
-It plays links in Spotify's default "share" format, e.g. https://open.spotify.com/album/5l5m1hnH4punS1GQXgEi3T.
-Also it supports =spotify:<type>:<id>= links, e.g. =spotify:track:2BzJno6LURg7HgfokcN9nc= or =spotify:artist:3SYkxKBdwKFCTxWDh9l5f9=, which are returned by Spotify's API.
+~emms-player-spotify~ is a EMMS player implementation which delegates to an open desktop Spotify app.
+It support playing URLs in Spotify's default "share" format, e.g. https://open.spotify.com/album/5l5m1hnH4punS1GQXgEi3T. Internally these urls are converted to shorter =spotify:<type>:<id>= URIs, in the same format as returned by Spotify's API.
 
 Features:
-- synchronised player state between emms and spotify
-  - manual seeking in spotify is recognized by emms
-  - play/pause in the app toggles ~emms-player-spotify~ state
-- muting ads
+- player's state is synchronised between EMMS and Spotify
+  - manual seeking in spotify is recognized by EMMS
+  - play/pause works in both directions
+- supports muting ads
 - ~emms-player-spotify-following~ minor mode to keep history of played tracks
-- integrated with emms modeline module
+- integrated with EMMS modeline module
 
 * Installation
 ** EMMS
@@ -37,38 +36,43 @@ If you haven't used it yet, then here is a minimal config.
 Install [[https://flathub.org/apps/details/com.spotify.Client][Spotify]] from FlatHub. In the app settings disable Autoplay.
 
 * Usage
-** Playlist of individual tracks
-This is the default EMMS way of listening music, though making a playlist isn't
-exactly trivial, as Spotify doesn't provide such. You'll have to source
-individual tracks somewhere, i.e. by parsing Spotify pages or using their API.
-Here is an example playlist you could use.
+** Playing individual tracks
+Tracks can be added one by one using =M-x emms-add-url= followed by a
+=open.spotify.com= link. Here are example track links you can use for a test.
 
 #+caption: TOOL-Lateralus.m3u
 #+begin_example
-spotify:track:6ZsZxNP4Iwdyp3kd5oFFQN
-spotify:track:5aVJ5rv7ghWSkQaqP726tE
-spotify:track:0Klbxk3g96Qae4DbCnUNcT
-spotify:track:4KVTRIZIj1WWIxitbREDnK
-spotify:track:55mJleti2WfWEFNFcBduhc
-spotify:track:3EeoMkZF8NhX9FdCSxG8MB
-spotify:track:1vxu8vMNshg5J8z3oA7QJZ
-spotify:track:0Cnx6PGogxIE2RnDcnoeK8
-spotify:track:7tvuLLroI0n6uYBWuFig5d
-spotify:track:1FRlNrHd4OGNIEVgFuX9Fu
-spotify:track:0R7HFX1LW3E0ZR5BnAJLHz
-spotify:track:2D9rd6TIpqmDkog5Mx8kxl
-spotify:track:3oEgMtjTzGgXTFdO0IW2M7
+https://open.spotify.com/track/6ZsZxNP4Iwdyp3kd5oFFQN
+https://open.spotify.com/track/5aVJ5rv7ghWSkQaqP726tE
+https://open.spotify.com/track/0Klbxk3g96Qae4DbCnUNcT
+https://open.spotify.com/track/4KVTRIZIj1WWIxitbREDnK
+https://open.spotify.com/track/55mJleti2WfWEFNFcBduhc
+https://open.spotify.com/track/3EeoMkZF8NhX9FdCSxG8MB
+https://open.spotify.com/track/1vxu8vMNshg5J8z3oA7QJZ
+https://open.spotify.com/track/0Cnx6PGogxIE2RnDcnoeK8
+https://open.spotify.com/track/7tvuLLroI0n6uYBWuFig5d
+https://open.spotify.com/track/1FRlNrHd4OGNIEVgFuX9Fu
+https://open.spotify.com/track/0R7HFX1LW3E0ZR5BnAJLHz
+https://open.spotify.com/track/2D9rd6TIpqmDkog5Mx8kxl
+https://open.spotify.com/track/3oEgMtjTzGgXTFdO0IW2M7
 #+end_example
 
+You can also save these links to a =.m3u= file and open it using =M-x emms-add-m3u-playlist=.
+
 ** Following mode
-This mode is much easier to use, just add any Spotify "collection" URL, e.g. an album or a playlist, and this collection will be expanded to individual tracks as you listen to them. You won't be able to see the next tracks though, only the past ones.
+This mode is much easier to use, just add any Spotify "collection" URL, e.g. an
+album or a playlist, and this collection will be expanded to individual tracks
+as you listen to them. You won't be able to see the next tracks though, only the
+past ones.
 
 Try it with =M-x emms-add-url RET <link>=. E.g. [[https://open.spotify.com/album/5l5m1hnH4punS1GQXgEi3T][TOOL - Lateralus]].
 
 Once the queue ends, the resulting playlist could be saved locally with ~C-x C-s~.
 * counsel-spotify integration
 
-[[https://melpa.org/#/counsel-spotify][counsel-spotify]] provides dynamic search functions for spotify content. Here is an example setup that will expand albums into individual tracks. For other non-track playables (playlist or artist) it will popuplate the title.
+[[https://melpa.org/#/counsel-spotify][counsel-spotify]] provides dynamic search functions for spotify content. Here is
+an example setup that will expand albums into individual tracks. For other
+non-track playables (playlist or artist) it will popuplate the title.
 
 #+begin_src emacs-lisp
 (use-package counsel-spotify
@@ -96,7 +100,7 @@ Once the queue ends, the resulting playlist could be saved locally with ~C-x C-s
               (emms-track-set track 'info-title (name el))
               (emms-track-set track 'info-artist (name (artist el)))
               (emms-track-set track 'info-album (name (album el)))
-              (emms-track-set track 'info-playing-time (millis-to-seconds (duration-in-ms el)))
+              (emms-track-set track 'info-playing-time (round (* 1e-6 (duration-in-ms el))))
               (emms-playlist-insert-track track)))
           (counsel-spotify-parse-items (list (cons 'tracks results)) 'tracks)))))))
 
