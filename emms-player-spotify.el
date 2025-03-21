@@ -4,7 +4,7 @@
 ;; SPDX-License-Identifier: Unlicense
 
 ;; Author: Sergey Trofimov <sarg@sarg.org.ru>
-;; Version: 0.1
+;; Version: 0.2
 ;; URL: https://github.com/sarg/emms-spotify
 ;; Package-Requires: ((emacs "26.1") (compat "29.1") (emms "18") (s "1.13.0"))
 
@@ -63,7 +63,11 @@
     (with-current-buffer (get-buffer-create "*emms-player-spotify-debug*")
       (goto-char (point-max))
       (insert (apply #'format
-                     (append (list (concat "%.1f " msg "\n") (float-time)) args))))))
+                     (append (list (concat "%.1f [%s%s] " msg "\n")
+                                   (float-time)
+                                   (if (emms-player-get emms-player-spotify 'playpause-expected) "p" " ")
+                                   (if (emms-player-get emms-player-spotify 'stop-expected) "s" " "))
+                             args))))))
 
 (defun emms-player-spotify--transform-url (url)
   "Convert URL from http scheme to spotify."
@@ -120,19 +124,28 @@
       (emms-track-set current-track 'info-playing-time (round (* length 1e-6)))
       (emms-track-updated current-track))))
 
-(defun emms-player-spotify--adblock-toggle ()
+(defun emms-player-spotify--adblock-toggle (is-ad)
   "Toggle mute when IS-AD."
-  (pcase (emms-player-get 'emms-player-spotify 'ad-blocked)
+  (pcase is-ad
     ('t
-     (emms-player-set 'emms-player-spotify 'ad-blocked nil)
-     (run-with-timer emms-player-spotify-adblock-delay nil
-                     #'emms-player-spotify--set-volume
-                     (emms-player-get emms-player-spotify 'saved-volume)))
-    (_
-     (emms-player-set 'emms-player-spotify 'ad-blocked t)
      (emms-player-set emms-player-spotify 'saved-volume
                       (emms-player-spotify--get-property "Volume"))
-     (emms-player-spotify--set-volume 0))))
+     (emms-player-spotify--set-volume 0))
+
+    (_
+     (when-let ((saved-volume (emms-player-get emms-player-spotify 'saved-volume)))
+       (run-with-timer emms-player-spotify-adblock-delay nil
+                       #'emms-player-spotify--set-volume saved-volume)
+       (emms-player-set emms-player-spotify 'saved-volume nil)))))
+
+(defun emms-player-spotify--remove-ad-placeholder ()
+  "Delete Advertisement track placeholder from current playlist."
+  (with-current-emms-playlist
+    (save-excursion
+      (goto-char emms-playlist-selected-marker)
+      (emms-playlist-delete-track)
+      (delete-line)
+      (emms-playlist-select-previous))))
 
 (defun emms-player-spotify--event-handler (_ properties &rest _)
   "Handles mpris dbus event.
@@ -150,24 +163,24 @@ Extracts playback status and track metadata from PROPERTIES."
 
       ;; resumed after emms-playpause request
       ;; ignore to avoid creating new tracks in following mode
-      ((and "Playing" (guard (emms-player-get emms-player-spotify 'playpause-requested)))
+      ((and "Playing" (guard (emms-player-get emms-player-spotify 'playpause-expected)))
        (emms-player-spotify-debug-msg "Resuming play after emms-pause")
-       (emms-player-set emms-player-spotify 'playpause-requested nil)
+       (emms-player-set emms-player-spotify 'playpause-expected nil)
        (ignore))
 
-      ((and "Paused" (guard (emms-player-get emms-player-spotify 'playpause-requested)))
+      ((and "Paused" (guard (emms-player-get emms-player-spotify 'playpause-expected)))
        (emms-player-spotify-debug-msg "Paused after emms-pause request")
-       (emms-player-set emms-player-spotify 'playpause-requested nil)
+       (emms-player-set emms-player-spotify 'playpause-expected nil)
        (ignore))
 
-      ((and "Paused" (guard (emms-player-get emms-player-spotify 'stop-requested)))
+      ((and "Paused" (guard (emms-player-get emms-player-spotify 'stop-expected)))
        ;; special case, when user changes track in emms
        ;; emms-player-spotify-stop called
        ;; mpris Stop called
        ;; emms-player-spotify-start called
        ;; Paused mpris event comes
        (emms-player-spotify-debug-msg "Paused after emms-stop")
-       (emms-player-set emms-player-spotify 'stop-requested nil))
+       (emms-player-set emms-player-spotify 'stop-expected nil))
 
       ("Playing" ;; new track reported via mpris
        (with-current-emms-playlist
@@ -178,7 +191,7 @@ Extracts playback status and track metadata from PROPERTIES."
                 (cur-track (emms-playlist-selected-track))
                 (cur-is-ad (s-prefix-p "spotify:ad:" (emms-player-spotify--track-uri cur-track))))
 
-           (emms-player-spotify-debug-msg "New track playing: %s" new-track)
+           (emms-player-spotify-debug-msg "New track playing: %s %s" new-track (caadr (assoc "xesam:title"  metadata)))
 
            ;; override artist and title for ads
            (when new-is-ad
@@ -195,19 +208,16 @@ Extracts playback status and track metadata from PROPERTIES."
 
             (new-is-ad
              (when emms-player-spotify-adblock
-               (emms-player-spotify--adblock-toggle))
+               (emms-player-spotify--adblock-toggle 't))
 
              ;; first ad track, add a placeholder
              (emms-player-spotify-following--on-new-track new-track))
 
             (cur-is-ad
-             ;; last ad track, remove placeholder
-             (save-excursion
-               (goto-char emms-playlist-selected-marker)
-               (delete-line))
+             (emms-player-spotify--remove-ad-placeholder)
 
              (when emms-player-spotify-adblock
-               (emms-player-spotify--adblock-toggle))
+               (emms-player-spotify--adblock-toggle nil))
 
              (when emms-player-spotify-following
                (emms-player-spotify-following--on-new-track new-track)))
@@ -230,19 +240,17 @@ Extracts playback status and track metadata from PROPERTIES."
          (cond
           (song-ended
            (when is-ad
-             (with-current-emms-playlist
-               (save-excursion
-                 (goto-char emms-playlist-selected-marker)
-                 (delete-line)))
+             (emms-player-spotify--remove-ad-placeholder)
 
              (when emms-player-spotify-adblock
-               (emms-player-spotify--adblock-toggle)))
+               (emms-player-spotify--adblock-toggle nil)))
 
            (emms-player-stopped))
 
           ('paused-externally
            (setq emms-player-paused-p t)
-           (run-hooks 'emms-player-paused-hook))))))))
+           (run-hooks 'emms-player-paused-hook)))))
+      (_ (emms-player-spotify-debug-msg "Unprocessed event %s" properties)))))
 
 (defun emms-player-spotify--get-property (name)
   "Query dbus property NAME from running spotify process."
@@ -255,11 +263,13 @@ Extracts playback status and track metadata from PROPERTIES."
 
 (defmacro emms-player-spotify--dbus-call (method &rest args)
   "Call dbus METHOD with ARGS on spotify."
-  `(dbus-call-method-asynchronously :session
-    "org.mpris.MediaPlayer2.spotify"
-    "/org/mpris/MediaPlayer2"
-    "org.mpris.MediaPlayer2.Player"
-    ,method nil ,@(if args args '())))
+  `(progn
+     (emms-player-spotify-debug-msg "DBUS: %s" ,method)
+     (dbus-call-method :session
+                       "org.mpris.MediaPlayer2.spotify"
+                       "/org/mpris/MediaPlayer2"
+                       "org.mpris.MediaPlayer2.Player"
+                       ,method ,@(if args args '()))))
 
 (defun emms-player-spotify-disable-dbus-handler ()
   "Unregister dbus handlers."
@@ -319,7 +329,7 @@ Extracts playback status and track metadata from PROPERTIES."
 
      (emms-insert-url new-track)
      (forward-line -1)
-     (set-marker emms-playlist-selected-marker (point))
+     (emms-playlist-select (point))
      (emms-player-started emms-player-spotify))))
 
 (define-minor-mode emms-player-spotify-following
@@ -340,8 +350,8 @@ Extracts playback status and track metadata from PROPERTIES."
 (defun emms-player-spotify-start (track)
   "Start playing TRACK."
   (emms-player-spotify-enable-dbus-handler)
-  (emms-player-spotify-debug-msg "Start requested")
-  (emms-player-set 'emms-player-spotify 'ad-blocked nil)
+  (emms-player-spotify-debug-msg "Start requested %s" track)
+  (emms-player-spotify--adblock-toggle nil)
   (when (not (emms-player-spotify--single-track-p track))
     (emms-player-spotify-following t))
   (emms-player-spotify--dbus-call "OpenUri" (emms-player-spotify--track-uri track))
@@ -351,7 +361,8 @@ Extracts playback status and track metadata from PROPERTIES."
   "Stop playing."
   (emms-player-spotify-debug-msg "Stop requested")
   (emms-player-spotify-following -1)
-  (emms-player-set emms-player-spotify 'stop-requested t)
+  (when emms-player-playing-p
+    (emms-player-set emms-player-spotify 'stop-expected t))
   (emms-player-spotify--dbus-call "Stop")
   (emms-player-stopped))
 
@@ -359,7 +370,7 @@ Extracts playback status and track metadata from PROPERTIES."
   "Start playing current track in spotify."
   (interactive)
   (emms-player-spotify-debug-msg "Play requested")
-  (emms-player-set emms-player-spotify 'playpause-requested t)
+  (emms-player-set emms-player-spotify 'playpause-expected t)
   (emms-player-spotify--dbus-call "Play"))
 
 (defun emms-player-spotify-seek (sec)
@@ -384,7 +395,7 @@ Extracts playback status and track metadata from PROPERTIES."
   "Pause current track in spotify."
   (interactive)
   (emms-player-spotify-debug-msg "Pause requested")
-  (emms-player-set emms-player-spotify 'playpause-requested t)
+  (emms-player-set emms-player-spotify 'playpause-expected t)
   (emms-player-spotify--dbus-call "Pause"))
 
 (defun emms-player-spotify-playable-p (track)
