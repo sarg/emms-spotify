@@ -1,6 +1,7 @@
 * What is it.
-~emms-player-spotify~ is a EMMS player implementation which delegates to an open desktop Spotify app.
-It support playing URLs in Spotify's default "share" format, e.g. https://open.spotify.com/album/5l5m1hnH4punS1GQXgEi3T. Internally these urls are converted to shorter =spotify:<type>:<id>= URIs, in the same format as returned by Spotify's API.
+~emms-player-spotify~ is an EMMS player implementation that supports playback of
+Spotify tracks. It does so by controlling a running Spotify app via the D-Bus
+MPRIS interface.
 
 Features:
 - player's state is synchronised between EMMS and Spotify
@@ -70,56 +71,10 @@ Try it with =M-x emms-add-url RET <link>=. E.g. [[https://open.spotify.com/album
 Once the queue ends, the resulting playlist could be saved locally with ~C-x C-s~.
 * counsel-spotify integration
 
-[[https://melpa.org/#/counsel-spotify][counsel-spotify]] provides dynamic search functions for spotify content. Here is
-an example setup that will expand albums into individual tracks. For other
-non-track playables (playlist or artist) it will popuplate the title.
-
-#+begin_src emacs-lisp
-(use-package counsel-spotify
-  :defer t
-  :custom
-  (counsel-spotify-use-notifications nil) ; conflicts with handlers of emms-player-spotify
-  ; (counsel-spotify-client-id "my-client-id")     ; you can hardcode the credentials
-  ; (counsel-spotify-client-id "my-client-secret") ; in case your config is strictly private
-
-  :config
-  ; load secrets from auth-source-pass on first call
-  (if (string-empty-p counsel-spotify-client-secret)
-      (setq counsel-spotify-client-id (auth-source-pass-get "client-id" "Sites/spotify.com")
-            counsel-spotify-client-secret (auth-source-pass-get "client-secret" "Sites/spotify.com")))
-
-  (defun emms-player-spotify-expand-album (id)
-    (counsel-spotify-with-auth-token (auth-token)
-     (counsel-spotify-with-query-results
-      (auth-token (concat counsel-spotify-spotify-api-url "/albums/" id "/tracks") results)
-
-      (with-current-emms-playlist
-        (goto-char (point-max))
-        (ignore (mapc (lambda (el)
-            (let ((track (emms-track 'url (uri el))))
-              (emms-track-set track 'info-title (name el))
-              (emms-track-set track 'info-artist (name (artist el)))
-              (emms-track-set track 'info-album (name (album el)))
-              (emms-track-set track 'info-playing-time (round (* 1e-6 (duration-in-ms el))))
-              (emms-playlist-insert-track track)))
-          (counsel-spotify-parse-items (list (cons 'tracks results)) 'tracks)))))))
-
-  (cl-defmethod counsel-spotify-do-play ((backend counsel-spotify-linux-backend) (playable counsel-spotify-playable))
-    (with-current-emms-playlist
-      (goto-char (point-max))
-      (cond
-       ((counsel-spotify-album-p playable)
-        (emms-player-spotify-expand-album
-         (nth 2 (string-split (uri playable) ":"))))
-
-       (t
-        (let ((track (emms-track 'url (uri playable))))
-          (emms-track-set track 'info-artist "Spotify Playlist")
-          (emms-track-set track 'info-title
-                          (decode-coding-string (string-make-unibyte (name playable)) 'utf-8))
-          (emms-playlist-insert-track track)
-          (emms-playlist-mode-play-current-track)))))))
-#+end_src
+[[https://melpa.org/#/counsel-spotify][counsel-spotify]] provides dynamic search functions for spotify content. Use
+[[file:emms-player-spotify-counsel.el]] to integrate both. This module replaces
+=counsel-spotify-do-play= with an implementation that enqueues tracks in the
+current EMMS playlist. Additionally it expands albums to individual tracks.
 
 * Timelines
 #+begin_example
@@ -150,7 +105,7 @@ SPOT    >  p    >
 
 ** Ads in track-by-track mode
 #+begin_example
-EMMS  >     [m   m   up] >
+EMMS  >     [m   m   u]□ >
 ------+-+-+-+--+-+-+-+---+-+->
 SPOT    > a    a   p       >
 #+end_example

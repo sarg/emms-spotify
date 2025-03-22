@@ -192,6 +192,7 @@ Extracts playback status and track metadata from PROPERTIES."
                 (cur-is-ad (s-prefix-p "spotify:ad:" (emms-player-spotify--track-uri cur-track))))
 
            (emms-player-spotify-debug-msg "New track playing: %s %s" new-track (caadr (assoc "xesam:title"  metadata)))
+           (emms-player-set emms-player-spotify 'stop-expected nil)
 
            ;; override artist and title for ads
            (when new-is-ad
