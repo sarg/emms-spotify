@@ -72,7 +72,7 @@ Once the queue ends, the resulting playlist could be saved locally with ~C-x C-s
 * counsel-spotify integration
 
 [[https://melpa.org/#/counsel-spotify][counsel-spotify]] provides dynamic search functions for spotify content. Use
-[[file:emms-player-spotify-counsel.el]] to integrate both. This module replaces
+[[file:contrib/emms-player-spotify-counsel.el]] to integrate both. This module replaces
 =counsel-spotify-do-play= with an implementation that enqueues tracks in the
 current EMMS playlist. Additionally it expands albums to individual tracks.
 
